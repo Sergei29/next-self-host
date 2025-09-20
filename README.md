@@ -20,6 +20,26 @@ This repo shows how to deploy a Next.js app and a PostgreSQL database on a Ubunt
    ssh root@your_server_ip
    ```
 
+   If you are on ASW EC2 instance:
+   - Get your EC2 public IP address,
+   - paste here your `.pem` key that u get from your EC2 instance
+   - run `chmod 400 my-ec2-key.pem` 
+   - run: for example if your EC2 public IP is `3.92.105.24`
+   ```sh
+   ssh -i my-ec2-key.pem ubuntu@3.92.105.24
+   ```
+   - once in there you may need update apt and install node:
+   ```sh
+   sudo apt update && sudo apt upgrade -y
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt install -y nodejs
+   ```
+   - verify if installed by:
+   ```sh
+   node -v
+   npm -v
+   ```
+
 2. **Download the deployment script**:
 
    ```bash
