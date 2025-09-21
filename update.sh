@@ -26,6 +26,23 @@ if ! sudo docker-compose ps | grep "Up"; then
   exit 1
 fi
 
+# Wait a few seconds for Postgres to start
+echo "⏳ Waiting 10 seconds for Postgres to initialize..."
+sleep 10
+
+# Sync Postgres user password (optional, ensures password matches .env)
+POSTGRES_USER=$(grep POSTGRES_USER "$APP_DIR/.env" | cut -d '=' -f2)
+POSTGRES_PASSWORD=$(grep POSTGRES_PASSWORD "$APP_DIR/.env" | cut -d '=' -f2)
+echo "🟢 Syncing Postgres password..."
+sudo docker-compose exec db psql -U postgres -c "ALTER USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';"
+
+# Run Drizzle migrations
+echo "🟢 Running Drizzle migrations..."
+sudo docker-compose exec web bun x drizzle-kit push --config ./drizzle.config.ts || {
+  echo "❌ Migrations failed. Check container logs."
+  exit 1
+}
+
 # Output final message
 echo "Update complete. Your Next.js app has been deployed with the latest changes."
 

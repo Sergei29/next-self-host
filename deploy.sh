@@ -153,6 +153,18 @@ if ! sudo docker-compose ps | grep "Up" >/dev/null; then
   exit 1
 fi
 
+# Wait a few seconds for Postgres to be ready
+echo "⏳ Waiting 10 seconds for Postgres to initialize..."
+sleep 10
+
+# Run Drizzle migrations
+echo "🟢 Running Drizzle migrations..."
+sudo docker-compose exec web bun x drizzle-kit push --config ./drizzle.config.ts || {
+    echo "❌ Migrations failed. Check the container logs."
+    exit 1
+}
+
+
 # ========================
 # Cronjob for SSL renewal
 # ========================
