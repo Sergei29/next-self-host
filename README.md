@@ -270,3 +270,96 @@ sudo certbot --nginx -d $DOMAIN_NAME -m $EMAIL --agree-tos --non-interactive --r
 | **Certbot + python3-certbot-nginx** | Automatically gets free SSL certificates and configures Nginx                     |
 | **SSL certificate request**         | Validates domain ownership with Let’s Encrypt, installs certificate for HTTPS     |
 | **Cronjob**                         | Automatically renews certificates every 12 hours and reloads Nginx                |
+
+### About pruning the containers
+- How can we preserve the postgres database data between pruning for example ?
+
+#### 🔹 How Docker stores Postgres data
+
+- When you run Postgres in Docker, the container itself is disposable.
+- The actual database files (your tables, rows, indexes) are stored in a Docker volume.
+- If you only remove/rebuild containers, your data is safe as long as the volume is preserved.
+- If you prune with `--volumes`, Docker deletes unused volumes, and that means your database is gone.
+
+#### 🔹 Typical setup (docker-compose.yml)
+
+In most `docker-compose.yml` setups you’ll see something like:
+
+```yml
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+- 👉 Here, `postgres_data` is a named volume that stores your Postgres files.
+- Even if you remove and rebuild containers, the volume persists.
+
+#### 🔹 What happens with prune
+
+- `docker system prune -a` → removes unused images and stopped containers, but keeps named volumes.
+- `docker system prune -a --volumes` → also deletes **unused volumes**. If your Postgres volume isn’t in use at the moment, it will be removed → 💀 **data loss**.
+
+#### 🔹 How to keep your database data
+
+- ✅ Option 1: Use named volumes (best practice)
+
+Make sure your `docker-compose.yml` has:
+
+```yml
+volumes:
+  postgres_data:
+```
+
+And Postgres uses it:
+
+```yml
+volumes:
+  - postgres_data:/var/lib/postgresql/data
+```
+As long as this volume is named, Docker will keep it unless you explicitly delete it.
+
+- ✅ Option 2: Backup before prune
+
+Before pruning with `--volumes`, you can dump the database:
+
+```sh
+# From inside container
+docker exec -t myapp-db-1 pg_dump -U myuser mydatabase > backup.sql
+
+# Or directly from host
+docker exec -t myapp-db-1 pg_dumpall -U myuser > full_backup.sql
+```
+
+Then later restore:
+
+```sh
+docker exec -i myapp-db-1 psql -U myuser -d mydatabase < backup.sql
+```
+
+- ✅ Option 3: Map Postgres data to host directory
+
+Instead of a Docker-managed volume, mount a host folder:
+
+```sh
+volumes:
+  - ./postgres_data:/var/lib/postgresql/data
+```
+
+Now your database lives in ./postgres_data on your EC2.
+Even if you prune everything, the host files are still there.
+
+#### ⚠️ TL;DR
+
+- `docker system prune -a` is safe → your Postgres data stays.
+- `docker system prune -a --volumes` is dangerous → you’ll lose DB data unless:
+- - You use named volumes (postgres_data), and don’t delete them.
+- - Or you backup before pruning.
+- - Or you mount to host directory.
