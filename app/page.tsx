@@ -93,7 +93,7 @@ export default async function Home() {
         own Docker container. It uses Drizzle for the ORM. There is also a cron
         job that resets the demo data every 10 minutes. You can manually hit the
         endpoint the cron uses by sending a <code>POST</code> to{' '}
-        <a href="https://nextselfhost.dev/db/clear">
+        <a href="https://template.bloblick.click/db/clear">
           <code>/db/clear</code>
         </a>
       </p>

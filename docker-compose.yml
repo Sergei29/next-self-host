@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - '3000:3000'
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
     depends_on:
@@ -25,6 +27,8 @@ services:
 
   cron:
     image: alpine/curl
+    env_file:
+      - .env
     command: >
       sh -c "
         echo '*/10 * * * * curl -X POST http://web:3000/db/clear' > /etc/crontabs/root && \

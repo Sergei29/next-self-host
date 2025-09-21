@@ -6,7 +6,8 @@
     "start": "node .next/standalone/server.js",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "connect:ec2": "ssh -i my-next-watchlist-keys.pem ubuntu@16.171.170.73"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
