@@ -131,9 +131,142 @@ bun run db:studio
 - `docker exec -it myapp-web-1 sh` - enter Next.js Docker container
 - `docker exec -it myapp-db-1 psql -U myuser -d mydatabase` - enter Postgres db
 
+## How to fix if run out of disk storage
+
+1. Check disk usage
+`df -h`
+Look at / and /var/lib/docker. Likely it’s almost 100%.
+
+2. Free up space:
+```sh
+sudo docker system prune -a --volumes
+```
+- `-a` removes all unused images, not just dangling ones.
+- `--volumes` removes unused volumes (be careful if you have data volumes you need).
+  
+3. Check logs
+```sh
+sudo journalctl --disk-usage
+sudo journalctl --vacuum-size=200M
+```
+Old system logs can take GBs.
+
+4. Remove unnecessary files
+
+- Node caches: `rm -rf ~/.npm ~/.cache`
+- Old builds: `rm -rf ~/myapp/build or temporary files in /tmp.`
+
+5. Rebuild Docker image
+- After cleaning or expanding:
+```sh
+cd ~/myapp
+sudo docker-compose build --no-cache
+sudo docker-compose up -d
+```
+
 ## Other Resources
 
 - [Kubernetes Example](https://github.com/ezeparziale/nextjs-k8s)
 - [Redis Cache Adapter for Next.js](https://github.com/vercel/next.js/tree/canary/examples/cache-handler-redis)
 - [ipx – Image optimization library](https://github.com/unjs/ipx)
 - [OrbStack - Fast Docker desktop client](https://orbstack.dev/)
+
+## About the deploy script:
+
+### 1️⃣ Swap
+```sh
+if [ ! -f /swapfile ]; then
+  sudo fallocate -l $SWAP_SIZE /swapfile
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+fi
+```
+#### What it is:
+
+- Swap is a portion of disk space that the operating system uses as “virtual RAM.”
+- If your physical RAM is full, the system can temporarily move inactive memory pages to swap.
+
+#### How it helps here:
+
+- Your EC2 instance might be small (e.g., 1–2 GB RAM).
+- Building Docker images, installing packages, or running Node.js + Postgres can consume a lot of memory.
+- Swap prevents “out of memory” errors during heavy operations like:
+- - `bun install`
+- - Docker image builds
+- - Running multiple containers at once
+
+### 2️⃣ Nginx
+
+```sh
+sudo apt install nginx -y
+```
+#### What it is:
+
+- Nginx is a web server and reverse proxy.
+- It listens on ports 80 (HTTP) and 443 (HTTPS) and forwards incoming requests to your application (Next.js running on port 3000 inside Docker).
+
+#### Role in this script:
+
+- Acts as a reverse proxy: client → Nginx → Docker container.
+- Handles: 
+- - HTTPS termination (SSL/TLS)
+- - Rate limiting (limit_req)
+- - Buffering control for streaming responses
+- Without Nginx, your Next.js app would need to handle HTTPS itself — which is less common in production.
+
+### 3️⃣ Certbot and python3-certbot-nginx
+```sh
+sudo apt install certbot python3-certbot-nginx -y
+```
+#### What they are:
+
+- `certbot`: a client tool to get free SSL/TLS certificates from Let’s Encrypt.
+- `python3-certbot-nginx`: a plugin for Certbot to automatically configure Nginx with SSL.
+
+#### What they do in this script:
+
+- Certbot generates a certificate for your domain (`template.bloblick.click`) and sets up Nginx to serve HTTPS traffic.
+- It automates the verification process using the ACME protocol.
+
+### 4️⃣ How SSL certificate request works
+```sh
+sudo certbot --nginx -d $DOMAIN_NAME -m $EMAIL --agree-tos --non-interactive --redirect
+```
+#### Step-by-step:
+
+1. Certbot tells Let’s Encrypt: “I want a certificate for this domain.”
+2. Let’s Encrypt performs domain verification:
+- - Confirms your domain points to your EC2 instance (via HTTP challenge).
+- - Creates a temporary file under /.well-known/acme-challenge/ that the CA tries to fetch.
+3. If verification succeeds, Let’s Encrypt issues the certificate.
+4. Certbot automatically configures Nginx to:
+- - Use the new certificate (fullchain.pem & privkey.pem)
+- - Redirect HTTP → HTTPS (--redirect flag)
+5. Now your site serves encrypted traffic over HTTPS.
+
+### 5️⃣ Cronjob for SSL renewal
+```sh
+( crontab -l 2>/dev/null; echo "0 */12 * * * certbot renew --quiet && systemctl reload nginx" ) | crontab -
+```
+#### How it works:
+
+- Let’s Encrypt certificates are valid for 90 days.
+- Certbot can renew them automatically.
+- The cronjob does the following every 12 hours (`0 */12 * * *`):
+- - Run `certbot renew --quiet` → checks all certificates and renews any that are near expiration.
+- - Reload Nginx configuration to start using the new certificate (`systemctl reload nginx`).
+
+#### Why it helps:
+
+- You don’t have to manually renew your certificate.
+- Ensures HTTPS stays valid and users never get certificate warnings.
+
+| Component                           | Role in deployment                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------- |
+| **Swap**                            | Prevents out-of-memory errors during heavy operations (Docker, Node.js, Postgres) |
+| **Nginx**                           | Reverse proxy, handles HTTPS, rate limiting, and buffering                        |
+| **Certbot + python3-certbot-nginx** | Automatically gets free SSL certificates and configures Nginx                     |
+| **SSL certificate request**         | Validates domain ownership with Let’s Encrypt, installs certificate for HTTPS     |
+| **Cronjob**                         | Automatically renews certificates every 12 hours and reloads Nginx                |
