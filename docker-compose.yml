@@ -31,7 +31,7 @@ services:
       - .env
     command: >
       sh -c "
-        echo '*/10 * * * * curl -X POST http://web:3000/db/clear' > /etc/crontabs/root && \
+        echo 'echo '0 0 * * 0 curl -X POST http://web:3000/db/clear' > /etc/crontabs/root && \
         crond -f -l 2
       "
     depends_on:
